@@ -1,0 +1,76 @@
+{
+ "id": "mx06_bias",
+ "code": "a = torch.randn(128, 128); b = torch.randn(128, 128); c = torch.randn(128); a @ b + c",
+ "rtol": 0.001,
+ "atol": 0.001,
+ "graph_inputs": [
+  "a",
+  "b",
+  "c"
+ ],
+ "graph_outputs": [
+  "add"
+ ],
+ "kernels": [
+  {
+   "node": "add",
+   "entry": "k_matmul_ee4f35",
+   "arg_order": [
+    "c",
+    "b",
+    "a",
+    "add"
+   ],
+   "grid": [
+    16,
+    1,
+    1
+   ],
+   "block": [
+    256,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [],
+   "args": [
+    {
+     "name": "c",
+     "dtype": "f32",
+     "shape": [
+      128
+     ],
+     "seed": 2
+    },
+    {
+     "name": "b",
+     "dtype": "f32",
+     "shape": [
+      128,
+      128
+     ],
+     "seed": 1
+    },
+    {
+     "name": "a",
+     "dtype": "f32",
+     "shape": [
+      128,
+      128
+     ],
+     "seed": 0
+    },
+    {
+     "name": "add",
+     "dtype": "f32",
+     "shape": [
+      128,
+      128
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}

@@ -1,0 +1,24 @@
+    Tile[_a2_ks, a0_b, a1_b, a0_u, a1_u] (N=18432)
+        Init(f32 acc0__c0_0 = 0.0)
+        Smem float _a_smem[16, 4] align=16
+        Smem float _b_smem[8, 16] align=16
+        for _fa in ((a0_u * 16) + a1_u)..8:128
+            cp.async[16B] _a_smem[((_fa * 4) / 4), ((_fa * 4) % 4)] <- x0[((a0_b * 8) + ((_fa * 4) / 4)), ((_a2_ks * 20) + (0 + ((_fa * 4) % 4)))]
+        for _fb in ((a0_u * 16) + a1_u)..16:128
+            cp.async[16B] _b_smem[((_fb * 4) / 16), ((_fb * 4) % 16)] <- x1[((_a2_ks * 20) + (0 + ((_fb * 4) / 16))), ((a1_b * 16) + ((_fb * 4) % 16))]
+        cp.async.commit_group
+        for _ks in 0..20:4
+            for _fa in ((a0_u * 16) + a1_u)..8:128
+                cp.async[16B] _a_smem[(((((_ks / 4) + 1) % 2) * 8) + ((_fa * 4) / 4)), ((_fa * 4) % 4)] <- x0[((a0_b * 8) + ((_fa * 4) / 4)), ((_a2_ks * 20) + ((((_ks + 4) < 20) ? (_ks + 4) : 16) + ((_fa * 4) % 4)))]
+            for _fb in ((a0_u * 16) + a1_u)..16:128
+                cp.async[16B] _b_smem[(((((_ks / 4) + 1) % 2) * 4) + ((_fb * 4) / 16)), ((_fb * 4) % 16)] <- x1[((_a2_ks * 20) + ((((_ks + 4) < 20) ? (_ks + 4) : 16) + ((_fb * 4) / 16))), ((a1_b * 16) + ((_fb * 4) % 16))]
+            cp.async.commit_group
+            cp.async.wait_group(1)
+            Sync
+            for _ki in 0..4
+                in1__c0_0 = load _b_smem[((((_ks / 4) % 2) * 4) + _ki), ((((a1_b * 16) + (a1_u * 1)) + 0) - (a1_b * 16))]
+                in0__c0_0 = load _a_smem[((((_ks / 4) % 2) * 8) + ((((a0_b * 8) + (a0_u * 1)) + 0) - (a0_b * 8))), _ki]
+                f32 acc0__v__c0_0 = multiply(in1__c0_0, in0__c0_0)
+                f32 acc0__c0_0 <- add(acc0__c0_0, acc0__v__c0_0)
+            Sync
+        matmul[(((a0_b * 8) + (a0_u * 1)) + 0), (((a1_b * 16) + (a1_u * 1)) + 0)] += acc0__c0_0  (atomic)

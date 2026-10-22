@@ -1,0 +1,73 @@
+{
+ "id": "px18_fma3",
+ "code": "a = torch.randn(512); b = torch.randn(512); c = torch.randn(512); a * b + c",
+ "rtol": 1e-06,
+ "atol": 1e-06,
+ "graph_inputs": [
+  "a",
+  "b",
+  "c"
+ ],
+ "graph_outputs": [
+  "add"
+ ],
+ "kernels": [
+  {
+   "node": "add",
+   "entry": "k_add_pointwise",
+   "arg_order": [
+    "b",
+    "a",
+    "c",
+    "add"
+   ],
+   "grid": [
+    1,
+    1,
+    1
+   ],
+   "block": [
+    256,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [],
+   "args": [
+    {
+     "name": "b",
+     "dtype": "f32",
+     "shape": [
+      512
+     ],
+     "seed": 1
+    },
+    {
+     "name": "a",
+     "dtype": "f32",
+     "shape": [
+      512
+     ],
+     "seed": 0
+    },
+    {
+     "name": "c",
+     "dtype": "f32",
+     "shape": [
+      512
+     ],
+     "seed": 2
+    },
+    {
+     "name": "add",
+     "dtype": "f32",
+     "shape": [
+      512
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}
