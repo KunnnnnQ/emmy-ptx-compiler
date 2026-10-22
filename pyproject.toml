@@ -1,0 +1,30 @@
+[project]
+name = "ptxc"
+version = "1.0.0"
+description = "A compiler from Emmy Kernel IR to PTX (Emmy Hackathon 2026)"
+requires-python = ">=3.12"
+dependencies = ["emmy-ml==0.3.11"]
+
+[project.optional-dependencies]
+test = ["pytest", "numpy", "requests", "ruff"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["tests/extra", "tests/guess", "out"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = [
+    "E731",   # small lambdas in the fuzz/test spec tables read better inline
+    "RUF001", # docstrings quote math symbols on purpose
+    "RUF002",
+    "RUF003",
+    "SIM108", # if/else blocks are clearer than ternaries in the lowering
+]
+
+[tool.ruff.lint.per-file-ignores]
+"compile.py" = ["E402"]  # sys.path setup precedes the import
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]

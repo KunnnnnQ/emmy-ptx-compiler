@@ -31,7 +31,9 @@ def run_one(task: Path, problem: Path, attempts: int = 4) -> tuple[str, bool, st
         )
         out = (r.stdout + r.stderr).strip()
         # a busy runner answers 502 / drops the connection: that is not a verdict, so retry
-        if r.returncode == 0 or not any(s in out for s in ("502 Server Error", "503 Server Error", "cannot reach the runner")):
+        if r.returncode == 0 or not any(
+            s in out for s in ("502 Server Error", "503 Server Error", "cannot reach the runner")
+        ):
             break
         time.sleep(10 * (attempt + 1))
     return problem.name, r.returncode == 0, out, time.time() - t0

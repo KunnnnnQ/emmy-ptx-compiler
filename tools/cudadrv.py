@@ -50,9 +50,14 @@ class Gpu:
         """JIT the PTX; a failure raises with the driver's ptxas log."""
         size = 1 << 15
         info, err = ctypes.create_string_buffer(size), ctypes.create_string_buffer(size)
-        opts = (ctypes.c_int * 4)(_JIT_INFO_LOG_BUFFER, _JIT_INFO_LOG_BUFFER_SIZE, _JIT_ERROR_LOG_BUFFER, _JIT_ERROR_LOG_BUFFER_SIZE)
+        opts = (ctypes.c_int * 4)(
+            _JIT_INFO_LOG_BUFFER, _JIT_INFO_LOG_BUFFER_SIZE, _JIT_ERROR_LOG_BUFFER, _JIT_ERROR_LOG_BUFFER_SIZE
+        )
         vals = (ctypes.c_void_p * 4)(
-            ctypes.cast(info, ctypes.c_void_p), ctypes.c_void_p(size), ctypes.cast(err, ctypes.c_void_p), ctypes.c_void_p(size)
+            ctypes.cast(info, ctypes.c_void_p),
+            ctypes.c_void_p(size),
+            ctypes.cast(err, ctypes.c_void_p),
+            ctypes.c_void_p(size),
         )
         mod = ctypes.c_void_p()
         code = _lib.cuModuleLoadDataEx(ctypes.byref(mod), ptx.encode() + b"\0", 4, opts, vals)
@@ -68,7 +73,10 @@ class Gpu:
         array = np.ascontiguousarray(array)
         ptr = self.zeros(array.nbytes)
         if array.nbytes:
-            _check(_lib.cuMemcpyHtoD_v2(ptr, array.ctypes.data_as(ctypes.c_void_p), ctypes.c_size_t(array.nbytes)), "cuMemcpyHtoD")
+            _check(
+                _lib.cuMemcpyHtoD_v2(ptr, array.ctypes.data_as(ctypes.c_void_p), ctypes.c_size_t(array.nbytes)),
+                "cuMemcpyHtoD",
+            )
         return ptr
 
     def zeros(self, nbytes: int) -> ctypes.c_uint64:
@@ -81,7 +89,10 @@ class Gpu:
     def download(self, ptr: ctypes.c_uint64, dtype, shape) -> np.ndarray:
         out = np.empty(shape, dtype=dtype)
         if out.nbytes:
-            _check(_lib.cuMemcpyDtoH_v2(out.ctypes.data_as(ctypes.c_void_p), ptr, ctypes.c_size_t(out.nbytes)), "cuMemcpyDtoH")
+            _check(
+                _lib.cuMemcpyDtoH_v2(out.ctypes.data_as(ctypes.c_void_p), ptr, ctypes.c_size_t(out.nbytes)),
+                "cuMemcpyDtoH",
+            )
         return out
 
     def launch(self, fn, grid, block, smem_bytes: int, args: list) -> None:
@@ -89,8 +100,8 @@ class Gpu:
             _check(_lib.cuFuncSetAttribute(fn, _FUNC_ATTR_MAX_DYNAMIC_SHARED, smem_bytes), "dynamic shared memory size")
         holders = [a if isinstance(a, ctypes._SimpleCData) else ctypes.c_uint64(a.value) for a in args]
         params = (ctypes.c_void_p * len(holders))(*[ctypes.cast(ctypes.byref(h), ctypes.c_void_p) for h in holders])
-        gx, gy, gz = (list(grid) + [1, 1])[:3]
-        bx, by, bz = (list(block) + [1, 1])[:3]
+        gx, gy, gz = ([*list(grid), 1, 1])[:3]
+        bx, by, bz = ([*list(block), 1, 1])[:3]
         _check(_lib.cuLaunchKernel(fn, gx, gy, gz, bx, by, bz, smem_bytes, None, params, None), "cuLaunchKernel")
         _check(_lib.cuCtxSynchronize(), "kernel execution")
 

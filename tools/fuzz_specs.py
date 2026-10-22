@@ -111,14 +111,23 @@ def pointwise(rng: random.Random, pid: str) -> dict:
         text, fn = _tree(rng, names, rng.choice([1, 2, 3]))
         if all(n in text for n in names):  # an unused input would not be traced
             break
-    ref = lambda *xs: [fn(dict(zip(names, map(_d, xs)))).astype(f32)]  # noqa: E731
+    ref = lambda *xs: [fn(dict(zip(names, map(_d, xs), strict=True))).astype(f32)]
     return _lambda_spec(pid, [(n, shapes[n]) for n in names], text, ref, 1e-4, 1e-4)
 
 
 REDUCE_KNOBS = [
-    "WORK=t128,REDUCE=coop", "WORK=t128,REDUCE=coop", "WORK=t32,REDUCE=coop", "WORK=t64,REDUCE=coop",
-    "WORK=t256,REDUCE=coop", "WORK=t512,REDUCE=coop", "WORK=t128,REDUCE=coop-t", "WORK=t128,REDUCE=coop/r2",
-    "WORK=t128,REDUCE=coop/r4", "WORK=t128,REDUCE=g2a/coop", "WORK=t128,REDUCE=g4k/coop", "",
+    "WORK=t128,REDUCE=coop",
+    "WORK=t128,REDUCE=coop",
+    "WORK=t32,REDUCE=coop",
+    "WORK=t64,REDUCE=coop",
+    "WORK=t256,REDUCE=coop",
+    "WORK=t512,REDUCE=coop",
+    "WORK=t128,REDUCE=coop-t",
+    "WORK=t128,REDUCE=coop/r2",
+    "WORK=t128,REDUCE=coop/r4",
+    "WORK=t128,REDUCE=g2a/coop",
+    "WORK=t128,REDUCE=g4k/coop",
+    "",
 ]
 PRE = [
     ("{x}", lambda x: x),
@@ -136,7 +145,7 @@ def reduction(rng: random.Random, pid: str) -> dict:
     body = f"{pre_txt.format(x='x')}.{op}({axis if len(shape) > 1 else ''})"
     np_op = {"sum": np.sum, "mean": np.mean, "amax": np.max}[op]
     n = shape[axis]
-    ref = lambda x: [np.asarray(np_op(pre_fn(_d(x)), axis=axis if len(shape) > 1 else None)).astype(f32)]  # noqa: E731
+    ref = lambda x: [np.asarray(np_op(pre_fn(_d(x)), axis=axis if len(shape) > 1 else None)).astype(f32)]
     return _lambda_spec(pid, [("x", shape)], body, ref, 1e-4, 1e-4 * max(1.0, math.sqrt(n)), rng.choice(REDUCE_KNOBS))
 
 
@@ -152,22 +161,53 @@ def matmul(rng: random.Random, pid: str) -> dict:
     atol = 1e-3 * max(1.0, math.sqrt(k) / 8)
     if form == "bmm":
         b = rng.choice([2, 3, 4])
-        return _lambda_spec(pid, [("a", (b, m, k)), ("c", (b, k, n))], "torch.bmm(a, c)",
-                            lambda a, c: [(_d(a) @ _d(c)).astype(f32)], 1e-3, atol)
+        return _lambda_spec(
+            pid,
+            [("a", (b, m, k)), ("c", (b, k, n))],
+            "torch.bmm(a, c)",
+            lambda a, c: [(_d(a) @ _d(c)).astype(f32)],
+            1e-3,
+            atol,
+        )
     if form == "linear":
-        return _lambda_spec(pid, [("x", (m, k)), ("w", (n, k))], "torch.nn.functional.linear(x, w)",
-                            lambda x, w: [(_d(x) @ _d(w).T).astype(f32)], 1e-3, atol)
+        return _lambda_spec(
+            pid,
+            [("x", (m, k)), ("w", (n, k))],
+            "torch.nn.functional.linear(x, w)",
+            lambda x, w: [(_d(x) @ _d(w).T).astype(f32)],
+            1e-3,
+            atol,
+        )
     if form == "linear_bias":
-        return _lambda_spec(pid, [("x", (m, k)), ("w", (n, k)), ("b", (n,))], "torch.nn.functional.linear(x, w, b)",
-                            lambda x, w, b: [(_d(x) @ _d(w).T + _d(b)).astype(f32)], 1e-3, atol)
+        return _lambda_spec(
+            pid,
+            [("x", (m, k)), ("w", (n, k)), ("b", (n,))],
+            "torch.nn.functional.linear(x, w, b)",
+            lambda x, w, b: [(_d(x) @ _d(w).T + _d(b)).astype(f32)],
+            1e-3,
+            atol,
+        )
     if form == "relu":
-        return _lambda_spec(pid, [("a", (m, k)), ("c", (k, n))], "torch.relu(a @ c)",
-                            lambda a, c: [np.maximum(_d(a) @ _d(c), 0).astype(f32)], 1e-3, atol)
+        return _lambda_spec(
+            pid,
+            [("a", (m, k)), ("c", (k, n))],
+            "torch.relu(a @ c)",
+            lambda a, c: [np.maximum(_d(a) @ _d(c), 0).astype(f32)],
+            1e-3,
+            atol,
+        )
     if form == "add_vec":
-        return _lambda_spec(pid, [("a", (m, k)), ("c", (k, n)), ("v", (n,))], "a @ c + v",
-                            lambda a, c, v: [(_d(a) @ _d(c) + _d(v)).astype(f32)], 1e-3, atol)
-    return _lambda_spec(pid, [("a", (m, k)), ("c", (k, n))], "a @ c",
-                        lambda a, c: [(_d(a) @ _d(c)).astype(f32)], 1e-3, atol)
+        return _lambda_spec(
+            pid,
+            [("a", (m, k)), ("c", (k, n)), ("v", (n,))],
+            "a @ c + v",
+            lambda a, c, v: [(_d(a) @ _d(c) + _d(v)).astype(f32)],
+            1e-3,
+            atol,
+        )
+    return _lambda_spec(
+        pid, [("a", (m, k)), ("c", (k, n))], "a @ c", lambda a, c: [(_d(a) @ _d(c)).astype(f32)], 1e-3, atol
+    )
 
 
 ROW_COLS = [32, 64, 100, 128, 256, 300, 512, 1000, 1024, 2048, 4096]
@@ -183,26 +223,64 @@ def fused(rng: random.Random, pid: str) -> dict:
         return _lambda_spec(pid, x, "torch.softmax(x, dim=-1)", lambda x: [_softmax(_d(x)).astype(f32)], 1e-3, 1e-5)
     if kind == "softmax_t":
         t = rng.choice([0.125, 0.5, 2.0])
-        return _lambda_spec(pid, x, f"torch.softmax(x * {t}, dim=-1)", lambda x: [_softmax(_d(x) * t).astype(f32)], 1e-3, 1e-5)
+        return _lambda_spec(
+            pid, x, f"torch.softmax(x * {t}, dim=-1)", lambda x: [_softmax(_d(x) * t).astype(f32)], 1e-3, 1e-5
+        )
     if kind == "rms_pow":
-        return _lambda_spec(pid, x, "torch.mul(x, torch.pow(torch.mean(torch.pow(x, 2), -1, keepdim=True) + 1e-6, -0.5))",
-                            lambda x: [(_d(x) / np.sqrt((_d(x) ** 2).mean(-1, keepdims=True) + 1e-6)).astype(f32)], 1e-3, 1e-4)
+        return _lambda_spec(
+            pid,
+            x,
+            "torch.mul(x, torch.pow(torch.mean(torch.pow(x, 2), -1, keepdim=True) + 1e-6, -0.5))",
+            lambda x: [(_d(x) / np.sqrt((_d(x) ** 2).mean(-1, keepdims=True) + 1e-6)).astype(f32)],
+            1e-3,
+            1e-4,
+        )
     if kind == "rms_w":
-        return _lambda_spec(pid, x + [("w", (cols,))], "x * torch.rsqrt((x * x).mean(-1, keepdim=True) + 1e-5) * w",
-                            lambda x, w: [(_d(x) / np.sqrt((_d(x) ** 2).mean(-1, keepdims=True) + 1e-5) * _d(w)).astype(f32)],
-                            1e-3, 1e-4)
+        return _lambda_spec(
+            pid,
+            [*x, ("w", (cols,))],
+            "x * torch.rsqrt((x * x).mean(-1, keepdim=True) + 1e-5) * w",
+            lambda x, w: [(_d(x) / np.sqrt((_d(x) ** 2).mean(-1, keepdims=True) + 1e-5) * _d(w)).astype(f32)],
+            1e-3,
+            1e-4,
+        )
     if kind == "l2":
-        return _lambda_spec(pid, x, "x / torch.sqrt((x * x).sum(-1, keepdim=True))",
-                            lambda x: [(_d(x) / np.sqrt((_d(x) ** 2).sum(-1, keepdims=True))).astype(f32)], 1e-3, 1e-4)
+        return _lambda_spec(
+            pid,
+            x,
+            "x / torch.sqrt((x * x).sum(-1, keepdim=True))",
+            lambda x: [(_d(x) / np.sqrt((_d(x) ** 2).sum(-1, keepdims=True))).astype(f32)],
+            1e-3,
+            1e-4,
+        )
     if kind == "layernorm":
-        return _lambda_spec(pid, x, "(lambda d: d / torch.sqrt((d * d).mean(-1, keepdim=True) + 1e-5))(x - x.mean(-1, keepdim=True))",
-                            lambda x: [((_d(x) - _d(x).mean(-1, keepdims=True)) / np.sqrt(_d(x).var(-1, keepdims=True) + 1e-5)).astype(f32)],
-                            1e-3, 1e-4)
+        return _lambda_spec(
+            pid,
+            x,
+            "(lambda d: d / torch.sqrt((d * d).mean(-1, keepdim=True) + 1e-5))(x - x.mean(-1, keepdim=True))",
+            lambda x: [
+                ((_d(x) - _d(x).mean(-1, keepdims=True)) / np.sqrt(_d(x).var(-1, keepdims=True) + 1e-5)).astype(f32)
+            ],
+            1e-3,
+            1e-4,
+        )
     if kind == "center":
-        return _lambda_spec(pid, x, "x - x.mean(-1, keepdim=True)",
-                            lambda x: [(_d(x) - _d(x).mean(-1, keepdims=True)).astype(f32)], 1e-3, 1e-4)
-    return _lambda_spec(pid, x, "x.abs() / x.abs().sum(-1, keepdim=True)",
-                        lambda x: [(np.abs(_d(x)) / np.abs(_d(x)).sum(-1, keepdims=True)).astype(f32)], 1e-3, 1e-5)
+        return _lambda_spec(
+            pid,
+            x,
+            "x - x.mean(-1, keepdim=True)",
+            lambda x: [(_d(x) - _d(x).mean(-1, keepdims=True)).astype(f32)],
+            1e-3,
+            1e-4,
+        )
+    return _lambda_spec(
+        pid,
+        x,
+        "x.abs() / x.abs().sum(-1, keepdim=True)",
+        lambda x: [(np.abs(_d(x)) / np.abs(_d(x)).sum(-1, keepdims=True)).astype(f32)],
+        1e-3,
+        1e-5,
+    )
 
 
 def attention(rng: random.Random, pid: str) -> dict:
@@ -210,8 +288,8 @@ def attention(rng: random.Random, pid: str) -> dict:
     d, dv = rng.choice([8, 16, 32, 64]), rng.choice([8, 16, 32, 64])
     scale = round(1 / math.sqrt(d), 6)
     lead = (rng.choice([2, 4]),) if rng.random() < 0.3 else ()
-    args = [("q", lead + (lq, d)), ("kt", lead + (d, lk)), ("v", lead + (lk, dv))]
-    ref = lambda q, kt, v: [(_softmax(_d(q) @ _d(kt) * scale) @ _d(v)).astype(f32)]  # noqa: E731
+    args = [("q", (*lead, lq, d)), ("kt", (*lead, d, lk)), ("v", (*lead, lk, dv))]
+    ref = lambda q, kt, v: [(_softmax(_d(q) @ _d(kt) * scale) @ _d(v)).astype(f32)]
     return _lambda_spec(pid, args, f"torch.softmax(q @ kt * {scale}, dim=-1) @ v", ref, 1e-3, 1e-4)
 
 

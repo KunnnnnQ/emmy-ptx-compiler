@@ -1,5 +1,7 @@
 # ptxc: Emmy Kernel IR → PTX
 
+[![ci](https://github.com/KunnnnnQ/emmy-ptx-compiler/actions/workflows/ci.yml/badge.svg)](https://github.com/KunnnnnQ/emmy-ptx-compiler/actions/workflows/ci.yml)
+
 A compiler from [Emmy](https://github.com/cloudrift-ai/emmy)'s Kernel IR straight to PTX, written for the
 [Emmy Hackathon 2026](https://riftstack.ai/hackathon). It replaces Emmy's `Kernel IR → CUDA C++ → nvcc`
 path with a direct `Kernel IR → PTX` translation that `ptxas` can assemble.
@@ -56,14 +58,20 @@ batched and multi-head attention.
 
 ```
 compile.py
-  └─ ptxc/kernel.py   load IR + meta.json → KernelSpec (entry, params, buffer shapes, launch)
-  └─ ptxc/lower.py    walk the statement tree, one method per IR statement
-       ├─ ptxc/index.py   integer indices as affine forms + value ranges
-       ├─ ptxc/ops.py     elementwise f32 ops → PTX instruction sequences
-       └─ ptxc/ptx.py     virtual registers, labels, final PTX text
+  └─ ptxc/kernel.py        load IR + meta.json → KernelSpec (entry, params, buffer shapes, launch)
+  └─ ptxc/lower/           walk the statement tree, one method per IR statement, by family:
+       base.py               values, lexical scopes, dispatch, special registers
+       exprs.py              indices, predicates, loop bounds
+       memory.py             buffers, addresses, shared memory, Load / Write / cp.async
+       compute.py            Assign, Accum (+ fma fusion), Let, Init, Select
+       control.py            Tile, Sync, loops (unrolling), Cond
+       combine.py            WarpShuffle, TreeHalve
+  └─ ptxc/index.py         integer indices as affine forms + value ranges
+  └─ ptxc/ops.py           elementwise f32 ops → PTX instruction sequences
+  └─ ptxc/ptx.py           virtual registers, labels, final PTX text
 ```
 
-### Values and scopes (`lower.py`)
+### Values and scopes (`lower/base.py`)
 
 Each IR name maps to a value in a chain of lexical scopes:
 
@@ -139,6 +147,24 @@ from `ex2` because `tanh.approx` is only good to ~2⁻¹¹, and `erf` uses Abram
 below 1.5·10⁻⁷).
 
 ## Testing
+
+Unit tests run in CI on every push (`.github/workflows/ci.yml`), together with `ruff`:
+
+```bash
+pip install -r requirements.txt pytest ruff numpy "nvidia-cuda-nvcc-cu12==12.9.*"
+TASK_DIR=../emmy-hackathon-2026 pytest
+```
+
+* `tests/unit/test_index.py`: affine forms, C division semantics, the div/mod folds; the range-decided
+  comparisons are checked against brute force over every small interval, and random forms against Python.
+* `tests/unit/test_lowering.py`: every kernel of the open, extra and guess sets keeps the contract (entry
+  name, `arg_order` parameters, ASCII) and assembles with `ptxas` for sm_89; the optimizations above are
+  asserted on real kernels (no division in tile decodes, vector stores, fma, full and partial unrolling,
+  no contraction in pointwise code).
+* `tests/unit/test_gpu_ops.py`: every elementwise op as its own kernel on a local GPU against float64
+  numpy; the exact ones must match bit for bit (skipped without a GPU, as in CI).
+
+The end-to-end checks below need the runner or a GPU:
 
 ```bash
 # every open problem, through the task repository's submit.py (the hidden-set pipeline)

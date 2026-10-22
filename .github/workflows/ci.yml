@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out the task repository (the 15 open problems)
+        run: git clone --depth 1 https://github.com/cloudrift-ai/emmy-hackathon-2026 "$RUNNER_TEMP/task"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        # nvidia-cuda-nvcc-cu12 only provides ptxas, to assemble every generated kernel offline
+        run: pip install -r requirements.txt pytest ruff numpy requests "nvidia-cuda-nvcc-cu12==12.9.*"
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Unit tests (+ ptxas on every kernel; GPU tests skip without a device)
+        env:
+          TASK_DIR: ${{ runner.temp }}/task
+        run: pytest -q

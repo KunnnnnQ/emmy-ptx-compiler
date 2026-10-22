@@ -53,7 +53,7 @@ def is_pow2(n: int) -> bool:
 class Lin:
     """An affine integer form: sum(coeff * register) + const."""
 
-    __slots__ = ("terms", "const")
+    __slots__ = ("const", "terms")
 
     def __init__(self, terms: dict[str, int] | None = None, const: int = 0) -> None:
         self.terms = {r: c for r, c in (terms or {}).items() if c}
@@ -98,7 +98,7 @@ class Lin:
 
     def __repr__(self) -> str:
         parts = [f"{c}*{r}" for r, c in sorted(self.terms.items())]
-        return " + ".join(parts + [str(self.const)])
+        return " + ".join([*parts, str(self.const)])
 
 
 class IntGen:

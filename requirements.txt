@@ -1,0 +1,2 @@
+# What compile.py needs: Emmy only to load the Kernel IR (Graph.from_dict).
+emmy-ml==0.3.11

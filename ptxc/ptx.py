@@ -21,7 +21,7 @@ REG_CLASSES = {
 
 def f32_imm(x: float) -> str:
     """A float as a PTX hex immediate (`0f3F800000` is 1.0): exact, no decimal rounding."""
-    return "0f%08X" % struct.unpack("<I", struct.pack("<f", float(x)))[0]
+    return "0f{:08X}".format(struct.unpack("<I", struct.pack("<f", float(x)))[0])
 
 
 def ascii_only(text: str) -> str:

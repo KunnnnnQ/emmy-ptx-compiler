@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ptxc import compile_kernel, load_kernel  # noqa: E402
+from ptxc import compile_kernel, load_kernel
 
 
 def main(argv: list[str]) -> int:

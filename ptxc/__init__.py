@@ -8,4 +8,4 @@ Pipeline:  kernel.load_kernel (IR json + meta.json -> KernelSpec)
 from ptxc.kernel import load_kernel
 from ptxc.lower import compile_kernel
 
-__all__ = ["load_kernel", "compile_kernel"]
+__all__ = ["compile_kernel", "load_kernel"]

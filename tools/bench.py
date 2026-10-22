@@ -28,9 +28,9 @@ RUNNER = "http://runner.riftstack.ai:48701"
 
 
 def _load_nvrtc():
-    import nvidia.cuda_nvrtc as pkg  # noqa: PLC0415
+    import nvidia.cuda_nvrtc as pkg
 
-    base = Path(list(pkg.__path__)[0])
+    base = Path(next(iter(pkg.__path__)))
     names = ["nvrtc64_120_0.dll"] if sys.platform == "win32" else ["libnvrtc.so.12", "libnvrtc.so"]
     for d in (base / "bin", base / "lib"):
         for n in names:
@@ -85,9 +85,16 @@ def run(ptx: str, k: dict, iters: int) -> tuple[float | None, int | None, str]:
         return None, None, c.get("stderr", "")[:300]
     regs = c.get("registers", {}).get(k["entry"])
     body = {
-        "cubin_id": c["cubin_id"], "entry": k["entry"], "grid": k["grid"], "block": k["block"],
-        "smem_bytes": k["smem_bytes"], "zero_outputs": k["zero_outputs"], "args": k["args"],
-        "warmup": 5, "iters": iters, "max_return": 1,
+        "cubin_id": c["cubin_id"],
+        "entry": k["entry"],
+        "grid": k["grid"],
+        "block": k["block"],
+        "smem_bytes": k["smem_bytes"],
+        "zero_outputs": k["zero_outputs"],
+        "args": k["args"],
+        "warmup": 5,
+        "iters": iters,
+        "max_return": 1,
     }
     r = post("/run", body)
     if not r.get("ok"):
@@ -126,8 +133,8 @@ def main() -> int:
         except (RuntimeError, FileNotFoundError) as exc:
             t_ref, r_ref, err2 = None, None, str(exc)[:100]
         ratio = f"{t_ours / t_ref:6.2f}" if t_ours and t_ref else "     -"
-        fmt = lambda t: f"{t:9.1f}" if t else "        -"  # noqa: E731
-        print(f"{p.name:<24}{fmt(t_ours)}{fmt(t_ref)} {ratio}{str(r_ours):>5}/{str(r_ref):<5}  {err or err2}")
+        fmt = lambda t: f"{t:9.1f}" if t else "        -"
+        print(f"{p.name:<24}{fmt(t_ours)}{fmt(t_ref)} {ratio}{r_ours!s:>5}/{r_ref!s:<5}  {err or err2}")
     return 0
 
 

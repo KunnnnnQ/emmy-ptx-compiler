@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fuzz_specs import build  # noqa: E402
+from fuzz_specs import build
 
 SPECS: list[dict] = []
 GEN = None
@@ -49,7 +49,7 @@ def _one(i: int) -> tuple[str, str, str]:
         except subprocess.CalledProcessError as e:
             tail = (e.stderr or "").strip().splitlines()[-1:] or ["?"]
             return spec["id"], "untraceable", tail[0][:120]
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             shutil.rmtree(out, ignore_errors=True)
             return spec["id"], "package-error", str(e)[:120]
 

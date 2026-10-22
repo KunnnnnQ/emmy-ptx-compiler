@@ -34,7 +34,7 @@ def run_problem(pdir: Path) -> dict:
     import numpy as np
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from cudadrv import CudaError, Gpu  # noqa: PLC0415
+    from cudadrv import CudaError, Gpu
 
     meta = json.loads((pdir / "meta.json").read_text())
     expected = dict(np.load(pdir / "expected.npz")) if (pdir / "expected.npz").exists() else {}
@@ -84,9 +84,13 @@ def run_problem(pdir: Path) -> dict:
                 # 1.0 means some element sits exactly on the tolerance; the closer, the riskier
                 allowed = meta["atol"] + meta["rtol"] * np.abs(ref.astype(np.float64))
                 diff = np.abs(got32.astype(np.float64) - ref)
-                margin = float(np.max(np.where(allowed > 0, diff / np.maximum(allowed, 1e-300), np.where(diff > 0, np.inf, 0.0))))
+                margin = float(
+                    np.max(np.where(allowed > 0, diff / np.maximum(allowed, 1e-300), np.where(diff > 0, np.inf, 0.0)))
+                )
                 result["margin"] = max(result.get("margin", 0.0), margin)
-                result["detail"].append(f"{k['entry']}:{name} err={err:.3e} margin={margin:.3f} compile={compile_s:.2f}s")
+                result["detail"].append(
+                    f"{k['entry']}:{name} err={err:.3e} margin={margin:.3f} compile={compile_s:.2f}s"
+                )
                 if not ok:
                     result.update(ok=False, stage="wrong", tol=(meta["rtol"], meta["atol"]))
         gpu.free_all()
