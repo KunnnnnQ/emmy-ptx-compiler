@@ -19,6 +19,21 @@ PTX by the code in `ptxc/`; nothing goes through Emmy's renderer, `nvcc` or any 
 | open set (task repository) | 15: pointwise, reductions, matmul, fused, attention | **15 / 15** |
 | extra set (`tests/extra`, generated with the task's own generator) | 47 across the same five categories | **47 / 47** |
 
+**Speed.** `tools/bench.py` times each kernel on the runner next to a baseline: the problem's reference CUDA
+(Emmy's own renderer output) compiled by NVRTC with Emmy's flags. Every one of the 61 kernels with a
+baseline (NVRTC rejects one reference) runs at parity or faster, within the runner's timing noise; the
+largest gains come from loop unrolling (below):
+
+| kernel | ptxc | Emmy CUDA + NVRTC |
+|---|---|---|
+| a01 attention 64×64 | 47.7 µs | 72.3 µs |
+| a02 attention 128×32 | 27.3 µs | 31.4 µs |
+| attention 64×64, no scale (extra) | 281 µs | 377 µs |
+| softmax 32×1000 (extra) | 2.9 µs | 4.7 µs |
+| matmul 96×80×48 (extra) | 3.1 µs | 5.0 µs |
+| r02 sum of 65536 | 8.8 µs | 8.9 µs |
+| m01 matmul 512³ | 15.0 µs | 15.0 µs |
+
 The extra set varies what the hidden set varies: shapes (odd lengths such as 999 and 1000, 2-D and 3-D,
 rectangular and 1024² matmuls, 1000-wide softmax), and ops (exp, log, sigmoid, tanh, gelu/erf, silu,
 rsqrt, sqrt, where, clamp, maximum/minimum, column sums, max-reductions, split-K atomics, layer-norm-style
@@ -74,7 +89,7 @@ Materialized forms are cached per scope (common-subexpression reuse that never l
 | `Tile` | `gid = ctaid.x·blockDim + tid.x` (blockDim from `meta.json`), per-axis decode, bounds guard when the launch has more threads than cells |
 | `Load` / `Write` | `ld/st.global[.nc][.v2/.v4].f32` with `[reg+imm]` addressing; read-only inputs use the non-coherent path; `atomic` → `red.global.add.f32` |
 | `Assign` / `Accum` | `ops.py`; `acc += a*b` becomes one `fma.rn.f32` when it is safe |
-| `Loop` / `StridedLoop` | bottom-tested counted loop; fully unrolled when the IR marks it `unroll` (the index then becomes a constant and folds into addresses) |
+| `Loop` / `StridedLoop` | see *Loops* below |
 | `Cond` | `setp` + predicated branch, or nothing when ranges decide it |
 | `Smem` | module-level `.shared` arrays, or one `.extern .shared` pool above 48 KiB (matches `meta.json`'s dynamic size) |
 | `Sync` | `bar.sync 0` / named `bar.sync id, count` / `bar.warp.sync` |
@@ -82,6 +97,24 @@ Materialized forms are cached per scope (common-subexpression reuse that never l
 | `TreeHalve` | unrolled halving over shared memory with `bar.sync` between levels, then a broadcast load |
 | `CpAsyncCopy/Commit/Wait` | `cp.async.cg/ca.shared.global`, `cp.async.commit_group`, `cp.async.wait_group` |
 | `Let`, `Init`, `TernaryExpr`, `CastExpr`, `FlatIndex` | constants, `selp`, `cvt` |
+
+### Loops
+
+The trip count of a strided loop usually follows from the value ranges: `for a1 in tid..1024:128` runs
+exactly 8 times for every `tid ∈ [0, 127]`. `_counted_loop` picks the cheapest shape:
+
+* **fully unrolled** when the count is small: the loop variable becomes the affine form
+  `start + k·step`, so `x[a0, a1]` in copy `k` is `[%rd + 512k]`, one base register for all copies.
+  Copies only some threads reach (an odd length) get a predicate;
+* **partially unrolled** (2–8 copies per trip by body size, then a remainder loop) when it is long:
+  the copies' loads are independent, so many are in flight at once. This took the 65536-element sum from
+  21 µs to 9 µs and the attention kernels below the CUDA baseline;
+* a plain bottom-tested loop otherwise. Bodies containing a barrier only get shapes in which every
+  thread does the same thing.
+
+Unrolled copies are straight-line code, so a copy's scope stores the values it materializes (address
+registers, shared index terms) in the enclosing trip scope, where the next copy reuses them; names stay
+private to each copy.
 
 ### Numerics (`ops.py`)
 
@@ -100,6 +133,11 @@ python tools/check_all.py --task ../emmy-hackathon-2026
 
 # the extra generated set
 python tools/check_all.py --task ../emmy-hackathon-2026 --problems tests/extra
+```
+
+```bash
+# timing against the Emmy CUDA + NVRTC baseline (measurement only: pip install nvidia-cuda-nvrtc-cu12)
+python tools/bench.py --task ../emmy-hackathon-2026 [--problems tests/extra]
 ```
 
 `tests/expressions_extra.py` lists the extra problems; regenerate them with the task's generator and

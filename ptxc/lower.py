@@ -29,7 +29,9 @@ from ptxc.kernel import DTYPE_BYTES, Buffer, KernelSpec, static_int
 from ptxc.ptx import PtxBuilder, f32_imm
 
 STATIC_SMEM_LIMIT = 48 * 1024
-UNROLL_BUDGET = 4096  # max statements a fully unrolled loop may expand to
+UNROLL_BUDGET = 4096  # max statements a loop the IR marks `unroll` may expand to
+SMALL_LOOP_TRIPS = 16  # unmarked loops with at most this many trips are unrolled too ...
+SMALL_LOOP_BUDGET = 256  # ... if that stays within this many statements
 
 # C type spellings of Smem.dtype -> canonical dtype
 _SMEM_DTYPES = {"float": "f32", "__half": "f16", "half": "f16", "double": "f64", "int": "i32"}
@@ -57,10 +59,25 @@ class FloatV:
 
 
 class Scope:
-    def __init__(self, parent: Scope | None) -> None:
+    """Names defined in a block, plus the values materialized there (for reuse).
+
+    A `shares_values` scope is a straight-line block (one copy of an unrolled loop
+    body): its code dominates everything after it in the parent, so the values it
+    materializes are stored in the parent and the next copy reuses them, while its
+    names stay private to it.
+    """
+
+    def __init__(self, parent: Scope | None, shares_values: bool = False) -> None:
         self.parent = parent
+        self.shares_values = shares_values
         self.names: dict[str, object] = {}
         self.cse: dict[tuple, object] = {}
+
+    def value_home(self) -> Scope:
+        s = self
+        while s.shares_values and s.parent is not None:
+            s = s.parent
+        return s
 
     def lookup(self, name: str):
         s = self
@@ -98,7 +115,7 @@ class Lowerer:
         self.used_exit = False
 
     def _cse_put(self, key: tuple, value) -> None:
-        self.scope.cse[key] = value
+        self.scope.value_home().cse[key] = value
 
     # ======================================================================
     # driver
@@ -129,8 +146,8 @@ class Lowerer:
             self.b.comment(_pretty(s))
         handler(s)
 
-    def push(self) -> Scope:
-        self.scope = Scope(self.scope)
+    def push(self, shares_values: bool = False) -> Scope:
+        self.scope = Scope(self.scope, shares_values)
         return self.scope
 
     def pop(self) -> None:
@@ -659,41 +676,108 @@ class Lowerer:
         self._counted_loop(s.axis.name, start, end, step.const, s.body, unroll=s.unroll)
 
     def _counted_loop(self, var: str, start: Lin, end: Lin, step: int, body, *, unroll: bool) -> None:
-        """for (var = start; var < end; var += step) body"""
-        if start.is_const and end.is_const:
-            trips = max(0, -(-(end.const - start.const) // step))
-            if trips == 0:
+        """for (var = start; var < end; var += step) body
+
+        Three shapes, cheapest first:
+        * fully unrolled, when the trip count is small and known from the value ranges:
+          `var` becomes `start + k*step`, an affine form, so it folds into every address;
+          trailing copies that only some threads run get a predicate;
+        * partially unrolled by U (a main loop doing U copies per trip, then a remainder
+          loop): the U loads of one trip are independent and can be in flight together;
+        * a plain bottom-tested loop.
+        A body with a barrier only gets the shapes in which every thread does the same.
+        """
+        size = _size(body)
+        uniform_only = _has_barrier(body)
+        start_rng = start.range(self.ints.ranges)
+        if start_rng is not None and end.is_const:
+            min_trips = max(0, -(-(end.const - start_rng[1]) // step))
+            max_trips = max(0, -(-(end.const - start_rng[0]) // step))
+            if max_trips == 0:
                 return
-            if trips == 1 or (unroll and trips * _size(body) <= UNROLL_BUDGET):
-                for i in range(trips):
-                    self.push()
-                    self.define(var, IntV(Lin(const=start.const + i * step)))
+            budget = UNROLL_BUDGET if unroll else SMALL_LOOP_BUDGET
+            can_guard = not uniform_only or min_trips == max_trips
+            if can_guard and (max_trips == 1 or (max_trips <= SMALL_LOOP_TRIPS or unroll) and max_trips * size <= budget):
+                self._unrolled_copies(var, start, end, step, body, min_trips, max_trips)
+                return
+        if self.ints.compare("<", start, end) is False:
+            return
+        factor = 1 if uniform_only or not end.is_const else _unroll_factor(size)
+        lo = start_rng[0] if start_rng is not None else None
+        i = self.ints.fresh()  # the counter; it only has a range inside the bodies below
+        self.b.ins("mov.u32", i, self.ints.operand(start))
+        entry = start  # what the next entry test compares: `start` itself still has its range
+        if factor > 1:
+            # main loop: U copies per trip while the last of them is still in range
+            last = end.const - (factor - 1) * step
+            enters = self.ints.compare("<", start, Lin(const=last))
+            if enters is not False:
+                main_end = self.b.label("main_end")
+                if enters is not True:
+                    self.b.ins("bra", main_end, guard=f"@!{enters}")
+                head = self.b.label("main")
+                self.b.place(head)
+                self._counter_range(i, lo, last - 1)
+                self.push()  # the trip's scope: copies share values here, never past the loop
+                for k in range(factor):
+                    self.push(shares_values=True)
+                    self.define(var, IntV(Lin.of(i) + k * step))
                     self.body(body)
                     self.pop()
-                return
-        start_rng = start.range(self.ints.ranges)
+                self.pop()
+                self.ints.ranges.pop(i, None)
+                self.b.ins("add.s32", i, i, str(factor * step))
+                again = self.b.reg("pred")
+                self.b.ins("setp.lt.s32", again, i, str(last))
+                self.b.ins("bra", head, guard=f"@{again}")
+                self.b.place(main_end)
+                entry = Lin.of(i)
         end_rng = end.range(self.ints.ranges)
-        rng = (start_rng[0], end_rng[1] - 1) if start_rng and end_rng else None
-        i = self.ints.fresh(rng)
-        self.b.ins("mov.u32", i, self.ints.operand(start))
+        self._plain_loop(var, i, entry, end, step, body, body_hi=end_rng[1] - 1 if end_rng else None, lo=lo)
+
+    def _counter_range(self, i: str, lo: int | None, hi: int | None) -> None:
+        """Give loop counter `i` its in-body range (only while the body is emitted)."""
+        if lo is not None and hi is not None:
+            self.ints.ranges[i] = (lo, hi)
+
+    def _unrolled_copies(self, var: str, start: Lin, end: Lin, step: int, body, min_trips: int, max_trips: int) -> None:
+        for k in range(max_trips):
+            value = start + k * step
+            skip = None
+            if k >= min_trips:  # only some threads get this far
+                p = self.ints.compare("<", value, end)
+                if p is False:
+                    break
+                if p is not True:
+                    skip = self.b.label("tail_skip")
+                    self.b.ins("bra", skip, guard=f"@!{p}")
+            # an unguarded copy is straight-line code, so later copies may reuse its values
+            self.push(shares_values=skip is None)
+            self.define(var, IntV(value))
+            self.body(body)
+            self.pop()
+            if skip:
+                self.b.place(skip)
+
+    def _plain_loop(self, var: str, i: str, entry: Lin, end: Lin, step: int, body, *, body_hi, lo) -> None:
+        """Bottom-tested loop over counter `i`, which already holds its first value (`entry`)."""
         done = self.b.label("loop_end")
-        enters = self.ints.compare("<", start, end)
+        enters = self.ints.compare("<", entry, end)
+        if enters is False:
+            return
         if enters is not True:
-            if enters is False:
-                return
             self.b.ins("bra", done, guard=f"@!{enters}")
         head = self.b.label("loop")
         self.b.place(head)
+        self._counter_range(i, lo, body_hi)
         self.push()
         self.define(var, IntV(Lin.of(i)))
         self.body(body)
         self.pop()
+        self.ints.ranges.pop(i, None)
         self.b.ins("add.s32", i, i, str(step))
         again = self.b.reg("pred")
-        if end.is_const:
-            self.b.ins("setp.lt.s32", again, i, str(end.const))
-        else:
-            self.b.ins("setp.lt.s32", again, i, self.ints.reg_of(end))
+        self.b.ins("setp.lt.s32", again, i, self.ints.operand(end))
         self.b.ins("bra", head, guard=f"@{again}")
         self.b.place(done)
 
@@ -844,6 +928,24 @@ def _iter_stmts(body, kind: str):
             inner = getattr(s, field, None)
             if inner:
                 yield from _iter_stmts(inner, kind)
+
+
+_BARRIERS = ("Sync", "WarpShuffle", "TreeHalve", "CpAsyncWait")
+
+
+def _has_barrier(body) -> bool:
+    return any(next(_iter_stmts(body, kind), None) is not None for kind in _BARRIERS)
+
+
+def _unroll_factor(size: int) -> int:
+    """Copies per trip of a partially unrolled loop: more for small bodies."""
+    if size <= 4:
+        return 8
+    if size <= 16:
+        return 4
+    if size <= 64:
+        return 2
+    return 1
 
 
 def _size(body) -> int:
