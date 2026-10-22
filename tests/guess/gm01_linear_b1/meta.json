@@ -1,0 +1,68 @@
+{
+ "id": "gm01_linear_b1",
+ "code": "x = torch.randn(1, 64); w = torch.randn(32, 64); torch.nn.functional.linear(x, w)",
+ "rtol": 0.001,
+ "atol": 0.001,
+ "graph_inputs": [
+  "x",
+  "w"
+ ],
+ "graph_outputs": [
+  "linear"
+ ],
+ "kernels": [
+  {
+   "node": "linear",
+   "entry": "k_linear",
+   "arg_order": [
+    "x",
+    "w",
+    "linear"
+   ],
+   "grid": [
+    128,
+    1,
+    1
+   ],
+   "block": [
+    128,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [
+    "linear"
+   ],
+   "args": [
+    {
+     "name": "x",
+     "dtype": "f32",
+     "shape": [
+      1,
+      64
+     ],
+     "seed": 0
+    },
+    {
+     "name": "w",
+     "dtype": "f32",
+     "shape": [
+      32,
+      64
+     ],
+     "seed": 1
+    },
+    {
+     "name": "linear",
+     "dtype": "f32",
+     "shape": [
+      1,
+      32
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}

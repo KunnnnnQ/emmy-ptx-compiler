@@ -1,0 +1,76 @@
+{
+ "id": "gm06_linear_bias",
+ "code": "x = torch.randn(16, 128); w = torch.randn(64, 128); b = torch.randn(64); torch.nn.functional.linear(x, w, b)",
+ "rtol": 0.001,
+ "atol": 0.001,
+ "graph_inputs": [
+  "x",
+  "w",
+  "b"
+ ],
+ "graph_outputs": [
+  "linear"
+ ],
+ "kernels": [
+  {
+   "node": "linear",
+   "entry": "k_linear_d84d36",
+   "arg_order": [
+    "b",
+    "x",
+    "w",
+    "linear"
+   ],
+   "grid": [
+    1024,
+    1,
+    1
+   ],
+   "block": [
+    32,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [],
+   "args": [
+    {
+     "name": "b",
+     "dtype": "f32",
+     "shape": [
+      64
+     ],
+     "seed": 2
+    },
+    {
+     "name": "x",
+     "dtype": "f32",
+     "shape": [
+      16,
+      128
+     ],
+     "seed": 0
+    },
+    {
+     "name": "w",
+     "dtype": "f32",
+     "shape": [
+      64,
+      128
+     ],
+     "seed": 1
+    },
+    {
+     "name": "linear",
+     "dtype": "f32",
+     "shape": [
+      16,
+      64
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}

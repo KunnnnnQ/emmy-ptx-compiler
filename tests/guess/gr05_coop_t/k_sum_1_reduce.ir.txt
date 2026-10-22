@@ -1,0 +1,10 @@
+    Tile[a0_blk, a1_co, a0_ln] (N=256)
+        for a1 in a1_co..512:4
+            in0 = load x[((a0_blk * 32) + a0_ln), a1]
+            f32 acc0 <- add(acc0, in0)
+        Smem float acc0_smem[128]
+        acc0_smem[((a1_co * 32) + a0_ln)] = acc0
+        Sync
+        TreeHalve(acc0, length=4, tid=a1_co)
+        if ((a1_co == 0)):
+            sum_1[((a0_blk * 32) + a0_ln)] = acc0

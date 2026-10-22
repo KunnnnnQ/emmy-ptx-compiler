@@ -644,6 +644,23 @@ class Lowerer:
     def s_Init(self, s) -> None:
         self.define(s.name, FloatV(self.const_f32(float(s.identity))))
 
+    def s_Select(self, s) -> None:
+        """name = the value of the first branch whose predicate holds (the last is the fallback):
+        a chain of `selp` built from the back, with statically decided predicates folded."""
+        preds = [self.pred(self.expr(br.select)) for br in s.branches]
+        result = None
+        for br, p in reversed(list(zip(s.branches, preds))):
+            if p is False and result is not None:
+                continue
+            value = self.f32(br.value)
+            if result is None or p is True:
+                result = value
+                continue
+            r = self.b.reg("f32")
+            self.b.ins("selp.f32", r, value, result, p)
+            result = r
+        self.define(s.name, FloatV(result))
+
     # ======================================================================
     # statements: control flow
     # ======================================================================

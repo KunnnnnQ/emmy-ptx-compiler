@@ -1,0 +1,77 @@
+{
+ "id": "gp01_swiglu",
+ "code": "x = torch.randn(64, 256); y = torch.randn(64, 256); torch.nn.functional.silu(x) * y",
+ "rtol": 1e-05,
+ "atol": 1e-06,
+ "graph_inputs": [
+  "x",
+  "y"
+ ],
+ "graph_outputs": [
+  "mul"
+ ],
+ "kernels": [
+  {
+   "node": "mul",
+   "entry": "k_mul_pointwise",
+   "arg_order": [
+    "silu_one",
+    "x",
+    "y",
+    "mul"
+   ],
+   "grid": [
+    16,
+    1,
+    1
+   ],
+   "block": [
+    256,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [],
+   "args": [
+    {
+     "name": "silu_one",
+     "dtype": "f32",
+     "shape": [
+      1
+     ],
+     "data": [
+      1.0
+     ]
+    },
+    {
+     "name": "x",
+     "dtype": "f32",
+     "shape": [
+      64,
+      256
+     ],
+     "seed": 0
+    },
+    {
+     "name": "y",
+     "dtype": "f32",
+     "shape": [
+      64,
+      256
+     ],
+     "seed": 1
+    },
+    {
+     "name": "mul",
+     "dtype": "f32",
+     "shape": [
+      64,
+      256
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}

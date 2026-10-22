@@ -1,0 +1,79 @@
+{
+ "id": "gp04_residual_scale",
+ "code": "x = torch.randn(2, 16, 64); r = torch.randn(2, 16, 64); w = torch.randn(64); (x + r) * w",
+ "rtol": 0,
+ "atol": 0,
+ "graph_inputs": [
+  "x",
+  "r",
+  "w"
+ ],
+ "graph_outputs": [
+  "mul"
+ ],
+ "kernels": [
+  {
+   "node": "mul",
+   "entry": "k_mul_pointwise",
+   "arg_order": [
+    "x",
+    "r",
+    "w",
+    "mul"
+   ],
+   "grid": [
+    2,
+    1,
+    1
+   ],
+   "block": [
+    256,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [],
+   "args": [
+    {
+     "name": "x",
+     "dtype": "f32",
+     "shape": [
+      2,
+      16,
+      64
+     ],
+     "seed": 0
+    },
+    {
+     "name": "r",
+     "dtype": "f32",
+     "shape": [
+      2,
+      16,
+      64
+     ],
+     "seed": 1
+    },
+    {
+     "name": "w",
+     "dtype": "f32",
+     "shape": [
+      64
+     ],
+     "seed": 2
+    },
+    {
+     "name": "mul",
+     "dtype": "f32",
+     "shape": [
+      2,
+      16,
+      64
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}

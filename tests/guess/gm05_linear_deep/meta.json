@@ -1,0 +1,68 @@
+{
+ "id": "gm05_linear_deep",
+ "code": "x = torch.randn(1, 4096); w = torch.randn(512, 4096); torch.nn.functional.linear(x, w)",
+ "rtol": 0.001,
+ "atol": 0.002,
+ "graph_inputs": [
+  "x",
+  "w"
+ ],
+ "graph_outputs": [
+  "linear"
+ ],
+ "kernels": [
+  {
+   "node": "linear",
+   "entry": "k_linear",
+   "arg_order": [
+    "x",
+    "w",
+    "linear"
+   ],
+   "grid": [
+    1,
+    1,
+    1
+   ],
+   "block": [
+    256,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [
+    "linear"
+   ],
+   "args": [
+    {
+     "name": "x",
+     "dtype": "f32",
+     "shape": [
+      1,
+      4096
+     ],
+     "seed": 0
+    },
+    {
+     "name": "w",
+     "dtype": "f32",
+     "shape": [
+      512,
+      4096
+     ],
+     "seed": 1
+    },
+    {
+     "name": "linear",
+     "dtype": "f32",
+     "shape": [
+      1,
+      512
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}

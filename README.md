@@ -18,6 +18,7 @@ PTX by the code in `ptxc/`; nothing goes through Emmy's renderer, `nvcc` or any 
 |---|---|---|
 | open set (task repository) | 15: pointwise, reductions, matmul, fused, attention | **15 / 15** |
 | extra set (`tests/extra`, generated with the task's own generator) | 47 across the same five categories | **47 / 47** |
+| hidden-set guess (`tests/guess`, Emmy's own test workloads + schedule variants) | 40 | **40 / 40** |
 
 **Speed.** `tools/bench.py` times each kernel on the runner next to a baseline: the problem's reference CUDA
 (Emmy's own renderer output) compiled by NVRTC with Emmy's flags. Every one of the 61 kernels with a
@@ -38,6 +39,14 @@ The extra set varies what the hidden set varies: shapes (odd lengths such as 999
 rectangular and 1024² matmuls, 1000-wide softmax), and ops (exp, log, sigmoid, tanh, gelu/erf, silu,
 rsqrt, sqrt, where, clamp, maximum/minimum, column sums, max-reductions, split-K atomics, layer-norm-style
 centering, temperature softmax, attention of several sizes).
+
+The open set pins every reduction to one schedule (`WORK=t128,REDUCE=coop`), so the guess set varies what
+it holds fixed, to catch a compiler that only fits the open problems: block widths 32–512 (tree lengths
+2–16), the transposed cooperative reduce (segmented `TreeHalve`), register-split and grid-split reduces
+(atomic, and a two-kernel chain), fp16 buffers, rasterized grids, masked attention tails (`Select`), and
+the workloads in Emmy's own tests and recipes: batch-1 `F.linear`, a 1×1024·1024×3072 matvec, `bmm`,
+SwiGLU, the `pow(mean(pow(x, 2)) + eps, -0.5)` RMSNorm, affine layer norm, 4-D and fp16 softmax,
+batched and multi-head attention.
 
 ## How it works
 
@@ -96,7 +105,7 @@ Materialized forms are cached per scope (common-subexpression reuse that never l
 | `WarpShuffle` | `shfl.sync.bfly.b32` ladder under `activemask`, then the combine program |
 | `TreeHalve` | unrolled halving over shared memory with `bar.sync` between levels, then a broadcast load |
 | `CpAsyncCopy/Commit/Wait` | `cp.async.cg/ca.shared.global`, `cp.async.commit_group`, `cp.async.wait_group` |
-| `Let`, `Init`, `TernaryExpr`, `CastExpr`, `FlatIndex` | constants, `selp`, `cvt` |
+| `Let`, `Init`, `Select`, `TernaryExpr`, `CastExpr`, `FlatIndex` | constants, `selp` chains, `cvt` |
 
 ### Loops
 
@@ -131,8 +140,9 @@ below 1.5·10⁻⁷).
 # every open problem, through the task repository's submit.py (the hidden-set pipeline)
 python tools/check_all.py --task ../emmy-hackathon-2026
 
-# the extra generated set
+# the extra generated set, and the hidden-set guess
 python tools/check_all.py --task ../emmy-hackathon-2026 --problems tests/extra
+python tools/check_all.py --task ../emmy-hackathon-2026 --problems tests/guess
 ```
 
 ```bash
@@ -151,4 +161,5 @@ python ../emmy-hackathon-2026/tools/generate.py tests/expressions_extra.py --emm
 
 * f32 compute throughout; f16 buffers are converted on load and store.
 * `cp.async` with a swizzle, TMA, mbarriers and tensor-core (`mma`/`wgmma`) statements are rejected with
-  a clear error: the task states that no problem uses them.
+  a clear error: the task states that no problem uses them. (Emmy does pick tensor cores for an fp16
+  matmul, so that one workload is out of scope.)

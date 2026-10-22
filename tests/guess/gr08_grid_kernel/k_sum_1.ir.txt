@@ -1,0 +1,5 @@
+    Tile[] (N=1)
+        for _ksplit in 0..2
+            acc0__p = load sum_1__partial[_ksplit]
+            f32 acc0 <- add(acc0, acc0__p)
+        sum_1[] = acc0

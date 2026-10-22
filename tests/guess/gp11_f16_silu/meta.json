@@ -1,0 +1,64 @@
+{
+ "id": "gp11_f16_silu",
+ "code": "x = torch.randn(2048, dtype=torch.float16); torch.nn.functional.silu(x)",
+ "rtol": 0.002,
+ "atol": 0.002,
+ "graph_inputs": [
+  "x"
+ ],
+ "graph_outputs": [
+  "silu"
+ ],
+ "kernels": [
+  {
+   "node": "silu",
+   "entry": "k_silu_pointwise",
+   "arg_order": [
+    "silu_one",
+    "x",
+    "silu"
+   ],
+   "grid": [
+    2,
+    1,
+    1
+   ],
+   "block": [
+    256,
+    1,
+    1
+   ],
+   "smem_bytes": 0,
+   "zero_outputs": [],
+   "args": [
+    {
+     "name": "silu_one",
+     "dtype": "f32",
+     "shape": [
+      1
+     ],
+     "data": [
+      1.0
+     ]
+    },
+    {
+     "name": "x",
+     "dtype": "f16",
+     "shape": [
+      2048
+     ],
+     "seed": 0
+    },
+    {
+     "name": "silu",
+     "dtype": "f16",
+     "shape": [
+      2048
+     ],
+     "output": true
+    }
+   ],
+   "final": true
+  }
+ ]
+}
