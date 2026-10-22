@@ -137,6 +137,20 @@ Unrolled copies are straight-line code, so a copy's scope stores the values it m
 registers, shared index terms) in the enclosing trip scope, where the next copy reuses them; names stay
 private to each copy.
 
+### Measured and rejected
+
+Two optimizations looked right on paper and lost on the runner, so they are not in the compiler:
+
+* **Stopping ptxas from re-unrolling** (`.pragma "nounroll"` on ptxc's own loops). ptxas fully unrolls the
+  attention kernels' 64-step inner products and keeps the loop-invariant `q` row in registers: 255
+  registers and 192–780 bytes of spills. With the pragma the spills vanish (48–64 registers), but a01
+  goes from 48 µs to 175 µs, a02 from 27 µs to 56 µs and the 65536-element sum from 9 µs to 15 µs: the
+  spill traffic stays in L1, while re-reading `q` every outer step goes to memory.
+* **Combining adjacent shared-memory loads into `ld.shared.v2/v4`** (a peephole with alignment proved
+  from the affine forms). It turned all 2048 scalar loads of the 512³ matmul into 768 vector loads, and
+  changed nothing measurable on any of the nine matmul kernels; ptxas already pairs them in SASS. Not
+  worth a text-level pass in the code base.
+
 ### Numerics (`ops.py`)
 
 Arithmetic is IEEE round-to-nearest (`add.rn`, `mul.rn`, `div.rn`, `sqrt.rn`, `rcp.rn`). The explicit
