@@ -19,6 +19,10 @@ PTX by the code in `ptxc/`; nothing goes through Emmy's renderer, `nvcc` or any 
 | open set (task repository) | 15: pointwise, reductions, matmul, fused, attention | **15 / 15** |
 | extra set (`tests/extra`, generated with the task's own generator) | 47 across the same five categories | **47 / 47** |
 | hidden-set guess (`tests/guess`, Emmy's own test workloads + schedule variants) | 40 | **40 / 40** |
+| fuzzing (`tools/fuzz.py`, random specs over all five categories, 4 seeds) | 600 | **600 / 600** |
+
+Across all of these the largest error uses 13% of a problem's tolerance (an fp16 row sum, bounded by fp16
+rounding of the output); every other problem stays under 10%.
 
 **Speed.** `tools/bench.py` times each kernel on the runner next to a baseline: the problem's reference CUDA
 (Emmy's own renderer output) compiled by NVRTC with Emmy's flags. Every one of the 61 kernels with a
@@ -144,6 +148,21 @@ python tools/check_all.py --task ../emmy-hackathon-2026
 python tools/check_all.py --task ../emmy-hackathon-2026 --problems tests/extra
 python tools/check_all.py --task ../emmy-hackathon-2026 --problems tests/guess
 ```
+
+```bash
+# fuzzing: random problems through the task's own generator (Linux/WSL, emmy-ml 0.3.11 + torch) ...
+python tools/fuzz.py --task ../emmy-hackathon-2026 --emmy emmy --seed 5 --count 200 --out out/fuzz/s5 -j 12
+# ... checked on a LOCAL GPU (any NVIDIA driver, no toolkit): same inputs, launch and tolerances as the runner
+python tools/local_check.py out/fuzz/s5 --quiet
+```
+
+`tools/fuzz_specs.py` builds the random specs: pointwise expression trees (1–3 inputs, broadcasting,
+19 unary and 6 binary ops including sin/cos/erf/gelu), reductions over a random axis with random schedule
+knobs, matmul/`bmm`/`F.linear` with epilogues and odd sizes, row-wise fused kernels, and attention with
+random lengths, head sizes and batch. `tools/local_check.py` runs each problem in its own process with a
+ctypes binding of the CUDA driver API (`tools/cudadrv.py`) and reports, besides pass/fail, how much of the
+tolerance the worst element uses. A fuzz seed cross-checked on the runner (RTX 5090) agreed with the local
+GPU (RTX 4060) on all 191 problems.
 
 ```bash
 # timing against the Emmy CUDA + NVRTC baseline (measurement only: pip install nvidia-cuda-nvrtc-cu12)

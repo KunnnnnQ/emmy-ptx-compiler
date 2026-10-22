@@ -21,14 +21,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def run_one(task: Path, problem: Path) -> tuple[str, bool, str, float]:
+def run_one(task: Path, problem: Path, attempts: int = 4) -> tuple[str, bool, str, float]:
     t0 = time.time()
-    r = subprocess.run(
-        [sys.executable, str(task / "submit.py"), str(problem), "--compiler", str(ROOT / "compile.py")],
-        capture_output=True,
-        text=True,
-    )
-    return problem.name, r.returncode == 0, (r.stdout + r.stderr).strip(), time.time() - t0
+    for attempt in range(attempts):
+        r = subprocess.run(
+            [sys.executable, str(task / "submit.py"), str(problem), "--compiler", str(ROOT / "compile.py")],
+            capture_output=True,
+            text=True,
+        )
+        out = (r.stdout + r.stderr).strip()
+        # a busy runner answers 502 / drops the connection: that is not a verdict, so retry
+        if r.returncode == 0 or not any(s in out for s in ("502 Server Error", "503 Server Error", "cannot reach the runner")):
+            break
+        time.sleep(10 * (attempt + 1))
+    return problem.name, r.returncode == 0, out, time.time() - t0
 
 
 def main() -> int:
